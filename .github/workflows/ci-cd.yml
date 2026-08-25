@@ -82,7 +82,8 @@ jobs:
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
-        context: ./${{ matrix.service }}
+        context: .
+        file: ./${{ matrix.service }}/Dockerfile
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
@@ -112,6 +113,10 @@ jobs:
     
     - name: Deploy to Kubernetes
       run: |
+        # Replace image owner placeholder with actual GitHub owner
+        export GITHUB_OWNER=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')
+        find k8s -name '*.yaml' -exec sed -i "s|ghcr.io/OWNER/|ghcr.io/${GITHUB_OWNER}/|g" {} +
+        
         # Create namespace if it doesn't exist
         kubectl apply -f k8s/namespace.yaml
         
