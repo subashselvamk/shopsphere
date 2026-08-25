@@ -1,0 +1,16 @@
+**/.git
+**/.github
+**/node_modules
+**/__pycache__
+**/*.pyc
+**/.env
+**/venv
+**/.venv
+**/k8s
+**/istio
+**/README.md
+**/TABLE_OF_CONTENTS*.md
+**/Table_of_Contents*.txt
+**/.gitignore
+**/docker-compose*.yml
+**/test_*.py
