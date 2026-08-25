@@ -1,0 +1,105 @@
+services:
+  # MongoDB Database
+  mongo:
+    image: mongo:7.0
+    container_name: shopsphere-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - shopsphere-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # User Service
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    container_name: shopsphere-user-service
+    ports:
+      - "8001:8001"
+    environment:
+      - MONGO_URI=mongodb://mongo:27017
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - shopsphere-network
+    restart: unless-stopped
+
+  # Product Service
+  product-service:
+    build:
+      context: ./product-service
+      dockerfile: Dockerfile
+    container_name: shopsphere-product-service
+    ports:
+      - "8002:8002"
+    environment:
+      - MONGO_URI=mongodb://mongo:27017
+    volumes:
+      - product-uploads:/app/uploads
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - shopsphere-network
+    restart: unless-stopped
+
+  # Order Service
+  order-service:
+    build:
+      context: ./order-service
+      dockerfile: Dockerfile
+    container_name: shopsphere-order-service
+    ports:
+      - "8003:8003"
+    environment:
+      - MONGO_URI=mongodb://mongo:27017
+      - USER_SERVICE_URL=http://user-service:8001
+      - PRODUCT_SERVICE_URL=http://product-service:8002
+    depends_on:
+      mongo:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+      product-service:
+        condition: service_started
+    networks:
+      - shopsphere-network
+    restart: unless-stopped
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ./api-gateway/Dockerfile
+    container_name: shopsphere-api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - USER_SERVICE_URL=http://user-service:8001
+      - PRODUCT_SERVICE_URL=http://product-service:8002
+      - ORDER_SERVICE_URL=http://order-service:8003
+    depends_on:
+      - user-service
+      - product-service
+      - order-service
+    networks:
+      - shopsphere-network
+    restart: unless-stopped
+
+networks:
+  shopsphere-network:
+    driver: bridge
+
+volumes:
+  mongo-data:
+    driver: local
+  product-uploads:
+    driver: local

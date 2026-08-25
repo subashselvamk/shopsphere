@@ -1,0 +1,74 @@
+LIST OF CONTENTS
+
+
+
+CHAPTER NO	TITLE	PAGE NO
+
+	Abstract	ii
+
+	Acknowledgement	iii
+
+	List of Abbreviations	vi
+
+	List of Figures	vii
+
+	Company Profile	viii
+
+1	Introduction	1
+
+	1.1 Overview	1
+
+	1.2 Objective and Scope of the Project	1
+
+	1.3 Problem Statement and Purpose	2
+
+	1.4 Existing System vs. Proposed System Overview	2
+
+	1.5 Methodology	3
+
+	1.6 Outcome	3
+
+2	System Analysis	4
+
+	2.1 Block Diagram of the ShopSphere E-Commerce Platform	4
+
+	2.2 Flow Chart (Logic of E-Commerce Data Flow)	5
+
+	2.3 Feasibility Study	7
+
+	2.4 Conclusion	7
+
+3	System Requirements	8
+
+	3.1 Introduction	8
+
+	3.2 Hardware Requirements	8
+
+	3.3 Software Requirements	9
+
+	3.4 Software Description	9
+
+4	System Implementation	11
+
+	4.1 Introduction	11
+
+	4.2 List of Modules	11
+
+	4.3 Module Descriptions	12
+
+	4.4 System Workflow	14
+
+	4.5 Output Screenshots	14
+
+	4.6 Testing and Validation	18
+
+5	Conclusion and Future Development	19
+
+6	References	21
+
+	Appendices	22
+
+	Appendix A – Sample Coding	22
+
+	Appendix B – Certificate	31
+

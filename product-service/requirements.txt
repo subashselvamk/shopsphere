@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+pymongo
+httpx
+pydantic[email]
+python-multipart

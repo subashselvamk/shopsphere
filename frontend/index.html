@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShopSphere - E-Commerce Platform</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { 
+            margin: 0; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            overflow-x: hidden;
+        }
+        #threejs-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        }
+        .product-card-3d {
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+        .product-card-3d:hover {
+            transform: translateY(-5px);
+        }
+        .product-3d-canvas {
+            width: 100%;
+            height: 200px;
+            position: relative;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+        }
+        .product-3d-canvas canvas {
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        // Lucide icons as inline SVG
+        const ShoppingCartIcon = () => (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+            </svg>
+        );
+
+        const TrashIcon = () => (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+        );
+
+        const EditIcon = () => (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+        );
+
+        const CheckCircleIcon = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+        );
+
+        // Use relative URL for API - works in both local and Docker environments
+        const API_BASE_URL = window.location.origin + '/api';
+
+        // Three.js 3D Background Scene
+        function ThreeJSBackground() {
+            const containerRef = React.useRef(null);
+            const sceneRef = React.useRef(null);
+            const animationFrameRef = React.useRef(null);
+
+            React.useEffect(() => {
+                if (!containerRef.current) return;
+
+                // Scene setup
+                const scene = new THREE.Scene();
+                const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setPixelRatio(window.devicePixelRatio);
+                containerRef.current.appendChild(renderer.domElement);
+                sceneRef.current = { scene, camera, renderer };
+
+                // Lighting
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+                scene.add(ambientLight);
+                
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(5, 5, 5);
+                scene.add(directionalLight);
+
+                const pointLight = new THREE.PointLight(0x667eea, 1, 100);
+                pointLight.position.set(10, 10, 10);
+                scene.add(pointLight);
+
+                // Create floating geometric shapes
+                const shapes = [];
+                const geometryTypes = [
+                    () => new THREE.BoxGeometry(1, 1, 1),
+                    () => new THREE.SphereGeometry(0.8, 32, 32),
+                    () => new THREE.TorusGeometry(0.6, 0.3, 16, 100),
+                    () => new THREE.ConeGeometry(0.8, 1.5, 32),
+                    () => new THREE.OctahedronGeometry(0.8)
+                ];
+
+                for (let i = 0; i < 20; i++) {
+                    const geometryType = geometryTypes[Math.floor(Math.random() * geometryTypes.length)];
+                    const geometry = geometryType();
+                    const material = new THREE.MeshPhongMaterial({
+                        color: new THREE.Color().setHSL(Math.random(), 0.7, 0.6),
+                        transparent: true,
+                        opacity: 0.6,
+                        emissive: new THREE.Color().setHSL(Math.random(), 0.5, 0.2),
+                        shininess: 100
+                    });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    
+                    mesh.position.set(
+                        (Math.random() - 0.5) * 20,
+                        (Math.random() - 0.5) * 20,
+                        (Math.random() - 0.5) * 20
+                    );
+                    mesh.rotation.set(
+                        Math.random() * Math.PI,
+                        Math.random() * Math.PI,
+                        Math.random() * Math.PI
+                    );
+                    mesh.userData = {
+                        speed: Math.random() * 0.02 + 0.01,
+                        rotationSpeed: {
+                            x: (Math.random() - 0.5) * 0.02,
+                            y: (Math.random() - 0.5) * 0.02,
+                            z: (Math.random() - 0.5) * 0.02
+                        },
+                        amplitude: Math.random() * 2 + 1,
+                        frequency: Math.random() * 0.02 + 0.01
+                    };
+                    scene.add(mesh);
+                    shapes.push(mesh);
+                }
+
+                // Particle system
+                const particleGeometry = new THREE.BufferGeometry();
+                const particleCount = 1000;
+                const positions = new Float32Array(particleCount * 3);
+                const colors = new Float32Array(particleCount * 3);
+
+                for (let i = 0; i < particleCount * 3; i++) {
+                    positions[i] = (Math.random() - 0.5) * 50;
+                    colors[i] = Math.random();
+                }
+
+                particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+                const particleMaterial = new THREE.PointsMaterial({
+                    size: 0.1,
+                    vertexColors: true,
+                    transparent: true,
+                    opacity: 0.6
+                });
+
+                const particles = new THREE.Points(particleGeometry, particleMaterial);
+                scene.add(particles);
+
+                // Camera position
+                camera.position.z = 15;
+                camera.position.y = 5;
+                camera.lookAt(0, 0, 0);
+
+                // Animation
+                let time = 0;
+                const animate = () => {
+                    animationFrameRef.current = requestAnimationFrame(animate);
+                    time += 0.01;
+
+                    // Animate shapes
+                    shapes.forEach((shape, index) => {
+                        shape.rotation.x += shape.userData.rotationSpeed.x;
+                        shape.rotation.y += shape.userData.rotationSpeed.y;
+                        shape.rotation.z += shape.userData.rotationSpeed.z;
+                        
+                        shape.position.y += Math.sin(time * shape.userData.frequency + index) * 0.01;
+                        shape.position.x += Math.cos(time * shape.userData.frequency + index) * 0.01;
+                    });
+
+                    // Animate particles
+                    particles.rotation.y += 0.001;
+
+                    // Animate point light
+                    pointLight.position.x = Math.sin(time) * 10;
+                    pointLight.position.z = Math.cos(time) * 10;
+
+                    // Slow camera rotation
+                    camera.position.x = Math.sin(time * 0.1) * 2;
+                    camera.lookAt(0, 0, 0);
+
+                    renderer.render(scene, camera);
+                };
+                animate();
+
+                // Handle resize
+                const handleResize = () => {
+                    camera.aspect = window.innerWidth / window.innerHeight;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(window.innerWidth, window.innerHeight);
+                };
+                window.addEventListener('resize', handleResize);
+
+                // Cleanup
+                return () => {
+                    window.removeEventListener('resize', handleResize);
+                    if (animationFrameRef.current) {
+                        cancelAnimationFrame(animationFrameRef.current);
+                    }
+                    if (containerRef.current && renderer.domElement) {
+                        containerRef.current.removeChild(renderer.domElement);
+                    }
+                    renderer.dispose();
+                    shapes.forEach(shape => {
+                        shape.geometry.dispose();
+                        shape.material.dispose();
+                    });
+                    particleGeometry.dispose();
+                    particleMaterial.dispose();
+                };
+            }, []);
+
+            return <div id="threejs-container" ref={containerRef}></div>;
+        }
+
+        // 3D Product Card Component
+        function ProductCard3D({ product, onAddToCart }) {
+            const canvasRef = React.useRef(null);
+            const containerRef = React.useRef(null);
+            const animationIdRef = React.useRef(null);
+            const meshesRef = React.useRef([]);
+
+            React.useEffect(() => {
+                if (!canvasRef.current || !containerRef.current) return;
+
+                const width = containerRef.current.clientWidth;
+                const height = 200;
+
+                const scene = new THREE.Scene();
+                const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
+                const renderer = new THREE.WebGLRenderer({ 
+                    canvas: canvasRef.current, 
+                    alpha: true, 
+                    antialias: true,
+                    powerPreference: "high-performance"
+                });
+                renderer.setSize(width, height);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+                // Enhanced Lighting
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+                scene.add(ambientLight);
+                
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
+                directionalLight.position.set(5, 5, 5);
+                scene.add(directionalLight);
+
+                const pointLight = new THREE.PointLight(0x667eea, 0.8, 100);
+                pointLight.position.set(-5, 5, 5);
+                scene.add(pointLight);
+
+                // Create product representation based on category
+                let geometry;
+                const hue = (product.name.length * 13) % 360 / 360;
+                
+                if (product.category && product.category.toLowerCase().includes('electronic')) {
+                    geometry = new THREE.BoxGeometry(1.5, 1, 0.5);
+                } else if (product.category && product.category.toLowerCase().includes('book')) {
+                    geometry = new THREE.BoxGeometry(1, 1.5, 0.3);
+                } else {
+                    geometry = new THREE.SphereGeometry(1, 32, 32);
+                }
+
+                const material = new THREE.MeshPhongMaterial({
+                    color: new THREE.Color().setHSL(hue, 0.7, 0.5),
+                    emissive: new THREE.Color().setHSL(hue, 0.5, 0.2),
+                    shininess: 100,
+                    specular: new THREE.Color(0xffffff)
+                });
+
+                const mesh = new THREE.Mesh(geometry, material);
+                scene.add(mesh);
+                meshesRef.current.push({ mesh, geometry, material, type: 'main' });
+
+                // Add floating particles around product
+                const particles = [];
+                for (let i = 0; i < 12; i++) {
+                    const particleGeometry = new THREE.SphereGeometry(0.06, 8, 8);
+                    const particleMaterial = new THREE.MeshBasicMaterial({
+                        color: new THREE.Color().setHSL(hue, 0.8, 0.6),
+                        transparent: true,
+                        opacity: 0.7
+                    });
+                    const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+                    const angle = (i / 12) * Math.PI * 2;
+                    const radius = 2.5;
+                    particle.position.set(
+                        Math.cos(angle) * radius,
+                        Math.sin(angle * 2) * 0.5,
+                        Math.sin(angle) * radius
+                    );
+                    scene.add(particle);
+                    particles.push({ mesh: particle, geometry: particleGeometry, material: particleMaterial });
+                    meshesRef.current.push({ mesh: particle, geometry: particleGeometry, material: particleMaterial, type: 'particle' });
+                }
+
+                camera.position.z = 4;
+                camera.position.y = 0.5;
+
+                let time = 0;
+                const animate = () => {
+                    animationIdRef.current = requestAnimationFrame(animate);
+                    time += 0.02;
+
+                    // Animate main mesh
+                    mesh.rotation.y = time;
+                    mesh.rotation.x = Math.sin(time * 0.5) * 0.3;
+                    mesh.position.y = Math.sin(time * 0.8) * 0.2;
+
+                    // Animate particles
+                    particles.forEach((particle, index) => {
+                        const angle = (index / 12) * Math.PI * 2 + time;
+                        const radius = 2.5;
+                        particle.mesh.position.x = Math.cos(angle) * radius;
+                        particle.mesh.position.y = Math.sin(angle * 2 + time) * 0.5;
+                        particle.mesh.position.z = Math.sin(angle) * radius;
+                        particle.mesh.rotation.x += 0.02;
+                        particle.mesh.rotation.y += 0.02;
+                    });
+
+                    // Animate point light
+                    pointLight.position.x = Math.sin(time) * 5;
+                    pointLight.position.z = Math.cos(time) * 5;
+
+                    renderer.render(scene, camera);
+                };
+                animate();
+
+                // Handle resize
+                const handleResize = () => {
+                    if (!containerRef.current || !canvasRef.current) return;
+                    const newWidth = containerRef.current.clientWidth || canvasRef.current.clientWidth;
+                    const newHeight = 200;
+                    if (newWidth > 0) {
+                        camera.aspect = newWidth / newHeight;
+                        camera.updateProjectionMatrix();
+                        renderer.setSize(newWidth, newHeight);
+                    }
+                };
+
+                // Initial size
+                setTimeout(handleResize, 100);
+                
+                // Use ResizeObserver if available, otherwise fallback to window resize
+                let resizeObserver = null;
+                if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+                    resizeObserver = new ResizeObserver(handleResize);
+                    resizeObserver.observe(containerRef.current);
+                } else {
+                    window.addEventListener('resize', handleResize);
+                }
+
+                // Cleanup
+                return () => {
+                    if (resizeObserver) {
+                        resizeObserver.disconnect();
+                    } else {
+                        window.removeEventListener('resize', handleResize);
+                    }
+                    if (animationIdRef.current) {
+                        cancelAnimationFrame(animationIdRef.current);
+                    }
+                    if (renderer) renderer.dispose();
+                    meshesRef.current.forEach(({ geometry, material }) => {
+                        if (geometry) geometry.dispose();
+                        if (material) material.dispose();
+                    });
+                    meshesRef.current = [];
+                };
+            }, [product]);
+
+            return (
+                <div ref={containerRef} className="product-3d-canvas">
+                    <canvas ref={canvasRef} />
+                </div>
+            );
+        }
+
+        function ShopSphere() {
+            const [activeTab, setActiveTab] = useState('products');
+            const [user, setUser] = useState(null);
+            const [cart, setCart] = useState([]);
+            const [authMode, setAuthMode] = useState('login');
+            const [authForm, setAuthForm] = useState({ username: '', email: '', password: '' });
+            const [products, setProducts] = useState([]);
+            const [productForm, setProductForm] = useState({ name: '', description: '', price: '', stock: '', category: '' });
+            const [editingProduct, setEditingProduct] = useState(null);
+            const [orders, setOrders] = useState([]);
+            const [orderMessage, setOrderMessage] = useState('');
+            const [selectedImage, setSelectedImage] = useState(null);
+            const [imagePreview, setImagePreview] = useState(null);
+
+            const fetchProducts = async () => {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/products`);
+                    const data = await response.json();
+                    setProducts(data);
+                } catch (error) {
+                    console.error('Error fetching products:', error);
+                }
+            };
+
+            const fetchOrders = async () => {
+                if (!user) return;
+                try {
+                    const response = await fetch(`${API_BASE_URL}/orders?user_id=${user.user_id}`);
+                    const data = await response.json();
+                    setOrders(data);
+                } catch (error) {
+                    console.error('Error fetching orders:', error);
+                }
+            };
+
+            useEffect(() => {
+                fetchProducts();
+            }, []);
+
+            useEffect(() => {
+                if (user && activeTab === 'orders') {
+                    fetchOrders();
+                }
+            }, [user, activeTab]);
+
+            const handleAuth = async () => {
+                const endpoint = authMode === 'login' ? '/users/login' : '/users/register';
+                try {
+                    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(authForm)
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                        setUser(data);
+                        setAuthForm({ username: '', email: '', password: '' });
+                        alert(authMode === 'login' ? 'Login successful!' : 'Registration successful!');
+                        setActiveTab('products');
+                    } else {
+                        alert(data.detail || 'Authentication failed');
+                    }
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                }
+            };
+
+            const handleCreateProduct = async () => {
+                try {
+                    // First create the product
+                    const response = await fetch(`${API_BASE_URL}/products`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            ...productForm,
+                            price: parseFloat(productForm.price),
+                            stock: parseInt(productForm.stock)
+                        })
+                    });
+                    if (response.ok) {
+                        const product = await response.json();
+                        
+                        // If image is selected, upload it
+                        if (selectedImage) {
+                            const formData = new FormData();
+                            formData.append('file', selectedImage);
+                            
+                            const uploadResponse = await fetch(`${API_BASE_URL}/products/${product.id}/upload-image`, {
+                                method: 'POST',
+                                body: formData
+                            });
+                            
+                            if (!uploadResponse.ok) {
+                                alert('Product created but image upload failed');
+                            }
+                        }
+                        
+                        alert('Product created successfully!');
+                        setProductForm({ name: '', description: '', price: '', stock: '', category: '' });
+                        setSelectedImage(null);
+                        setImagePreview(null);
+                        fetchProducts();
+                    } else {
+                        const data = await response.json();
+                        alert(data.detail || 'Error creating product');
+                    }
+                } catch (error) {
+                    alert('Error creating product: ' + error.message);
+                }
+            };
+
+            const handleUpdateProduct = async () => {
+                try {
+                    // First update the product
+                    const response = await fetch(`${API_BASE_URL}/products/${editingProduct.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            ...productForm,
+                            price: parseFloat(productForm.price),
+                            stock: parseInt(productForm.stock)
+                        })
+                    });
+                    if (response.ok) {
+                        // If new image is selected, upload it
+                        if (selectedImage) {
+                            const formData = new FormData();
+                            formData.append('file', selectedImage);
+                            
+                            const uploadResponse = await fetch(`${API_BASE_URL}/products/${editingProduct.id}/upload-image`, {
+                                method: 'POST',
+                                body: formData
+                            });
+                            
+                            if (!uploadResponse.ok) {
+                                alert('Product updated but image upload failed');
+                            }
+                        }
+                        
+                        alert('Product updated successfully!');
+                        setEditingProduct(null);
+                        setProductForm({ name: '', description: '', price: '', stock: '', category: '' });
+                        setSelectedImage(null);
+                        setImagePreview(null);
+                        fetchProducts();
+                    } else {
+                        const data = await response.json();
+                        alert(data.detail || 'Error updating product');
+                    }
+                } catch (error) {
+                    alert('Error updating product: ' + error.message);
+                }
+            };
+
+            const handleDeleteProduct = async (id) => {
+                if (!confirm('Are you sure?')) return;
+                try {
+                    const response = await fetch(`${API_BASE_URL}/products/${id}`, { method: 'DELETE' });
+                    if (response.ok) {
+                        alert('Product deleted!');
+                        fetchProducts();
+                    }
+                } catch (error) {
+                    alert('Error deleting product');
+                }
+            };
+
+            const startEditProduct = (product) => {
+                setEditingProduct(product);
+                setProductForm({
+                    name: product.name,
+                    description: product.description,
+                    price: product.price,
+                    stock: product.stock,
+                    category: product.category
+                });
+                setSelectedImage(null);
+                setImagePreview(product.image_url ? `${window.location.origin}${product.image_url}` : null);
+            };
+
+            const handleImageSelect = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    setSelectedImage(file);
+                    // Create preview URL
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        setImagePreview(reader.result);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            const getImageUrl = (imageUrl) => {
+                if (!imageUrl) return null;
+                // If it's already a full URL, return it
+                if (imageUrl.startsWith('http')) return imageUrl;
+                // Otherwise, prepend the API base URL (without /api)
+                const baseUrl = window.location.origin;
+                return `${baseUrl}${imageUrl}`;
+            };
+
+            const addToCart = (product) => {
+                const existingItem = cart.find(item => item.id === product.id);
+                if (existingItem) {
+                    setCart(cart.map(item => 
+                        item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+                    ));
+                } else {
+                    setCart([...cart, { ...product, quantity: 1 }]);
+                }
+            };
+
+            const removeFromCart = (productId) => {
+                setCart(cart.filter(item => item.id !== productId));
+            };
+
+            const updateCartQuantity = (productId, quantity) => {
+                if (quantity <= 0) {
+                    removeFromCart(productId);
+                    return;
+                }
+                setCart(cart.map(item => 
+                    item.id === productId ? { ...item, quantity } : item
+                ));
+            };
+
+            const handleCreateOrder = async () => {
+                if (!user) {
+                    alert('Please login to create an order');
+                    return;
+                }
+                if (cart.length === 0) {
+                    alert('Cart is empty');
+                    return;
+                }
+                try {
+                    const response = await fetch(`${API_BASE_URL}/orders`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            user_id: user.user_id,
+                            items: cart.map(item => ({ product_id: item.id, quantity: item.quantity }))
+                        })
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                        setOrderMessage('Order created successfully!');
+                        setCart([]);
+                        setTimeout(() => setOrderMessage(''), 3000);
+                    } else {
+                        alert(data.detail || 'Error creating order');
+                    }
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                }
+            };
+
+            const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+            return (
+                <div className="min-h-screen relative">
+                    <ThreeJSBackground />
+                    <div className="relative z-10">
+                    <header className="bg-white/90 backdrop-blur-md shadow-lg border-b border-white/20">
+                        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+                            <div className="flex items-center space-x-3">
+                                <div className="p-2 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg text-white">
+                                    <ShoppingCartIcon />
+                                </div>
+                                <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">ShopSphere</h1>
+                            </div>
+                            <div className="flex items-center space-x-4">
+                                {user ? (
+                                    <div className="flex items-center space-x-3">
+                                        <span className="text-sm text-gray-600">Welcome, {user.username}!</span>
+                                        <button onClick={() => setUser(null)} className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
+                                            Logout
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <button onClick={() => setActiveTab('auth')} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                                        Login
+                                    </button>
+                                )}
+                                <button onClick={() => setActiveTab('cart')} className="relative p-2 bg-indigo-100 rounded-lg hover:bg-indigo-200">
+                                    <ShoppingCartIcon />
+                                    {cart.length > 0 && (
+                                        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center">
+                                            {cart.length}
+                                        </span>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    <nav className="bg-white/90 backdrop-blur-md border-b">
+                        <div className="max-w-7xl mx-auto px-4">
+                            <div className="flex space-x-8">
+                                {['products', 'manage', 'orders', 'cart'].map(tab => (
+                                    <button
+                                        key={tab}
+                                        onClick={() => setActiveTab(tab)}
+                                        className={`py-4 px-2 border-b-2 font-medium text-sm ${
+                                            activeTab === tab ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                                        }`}
+                                    >
+                                        {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </nav>
+
+                    <main className="max-w-7xl mx-auto px-4 py-8">
+                        {activeTab === 'auth' && (
+                            <div className="max-w-md mx-auto bg-white/95 backdrop-blur-sm rounded-lg shadow-2xl p-8 border border-white/20">
+                                <h2 className="text-2xl font-bold mb-6 text-center">{authMode === 'login' ? 'Login' : 'Register'}</h2>
+                                <div className="space-y-4">
+                                    {authMode === 'register' && (
+                                        <input type="text" placeholder="Username" value={authForm.username} onChange={(e) => setAuthForm({...authForm, username: e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
+                                    )}
+                                    <input type="email" placeholder="Email" value={authForm.email} onChange={(e) => setAuthForm({...authForm, email: e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
+                                    <input type="password" placeholder="Password" value={authForm.password} onChange={(e) => setAuthForm({...authForm, password: e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
+                                    <button onClick={handleAuth} className="w-full py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                                        {authMode === 'login' ? 'Login' : 'Register'}
+                                    </button>
+                                </div>
+                                <p className="mt-4 text-center text-sm text-gray-600">
+                                    {authMode === 'login' ? "Don't have an account? " : "Already have an account? "}
+                                    <button onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')} className="text-indigo-600 hover:underline">
+                                        {authMode === 'login' ? 'Register' : 'Login'}
+                                    </button>
+                                </p>
+                            </div>
+                        )}
+
+                        {activeTab === 'products' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {products.map(product => (
+                                    <div key={product.id} className="product-card-3d bg-white/95 backdrop-blur-sm rounded-lg shadow-2xl overflow-hidden hover:shadow-2xl transition-all duration-300 border border-white/20 group">
+                                        <div className="relative h-64">
+                                            {product.image_url ? (
+                                                <img 
+                                                    src={getImageUrl(product.image_url)} 
+                                                    alt={product.name}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : (
+                                                <ProductCard3D product={product} onAddToCart={() => {}} />
+                                            )}
+                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-all duration-300 flex items-center justify-center">
+                                                <button 
+                                                    onClick={() => addToCart(product)} 
+                                                    disabled={product.stock === 0}
+                                                    className={`opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 px-6 py-3 rounded-full font-bold text-white shadow-2xl ${
+                                                        product.stock === 0 
+                                                            ? 'bg-gray-400 cursor-not-allowed' 
+                                                            : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'
+                                                    }`}
+                                                >
+                                                    ✨ Quick Add
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="p-6">
+                                            <div className="flex justify-between items-start mb-4">
+                                                <h3 className="text-xl font-bold text-gray-800">{product.name}</h3>
+                                                <span className="px-3 py-1 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-full text-sm font-semibold">{product.category || 'Product'}</span>
+                                            </div>
+                                            <p className="text-gray-600 mb-4 line-clamp-2 min-h-[3rem]">{product.description}</p>
+                                            <div className="flex justify-between items-center mb-4">
+                                                <span className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">${product.price}</span>
+                                                <span className="text-sm text-gray-500">Stock: {product.stock}</span>
+                                            </div>
+                                            <button 
+                                                onClick={() => addToCart(product)} 
+                                                disabled={product.stock === 0} 
+                                                className={`w-full py-3 rounded-lg font-medium transition-all duration-300 ${
+                                                    product.stock === 0 
+                                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                                                        : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 transform hover:scale-105 shadow-lg'
+                                                }`}
+                                            >
+                                                {product.stock === 0 ? 'Out of Stock' : '✨ Add to Cart'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {activeTab === 'manage' && (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                <div className="bg-white/95 backdrop-blur-sm rounded-lg shadow-2xl p-6 border border-white/20">
+                                    <h2 className="text-2xl font-bold mb-6">{editingProduct ? 'Edit Product' : 'Create Product'}</h2>
+                                    <div className="space-y-4">
+                                        <input type="text" placeholder="Product Name" value={productForm.name} onChange={(e) => setProductForm({...productForm, name: e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
+                                        <textarea placeholder="Description" value={productForm.description} onChange={(e) => setProductForm({...productForm, description: e.target.value})} className="w-full px-4 py-2 border rounded-lg" rows="3" />
+                                        <input type="number" step="0.01" placeholder="Price" value={productForm.price} onChange={(e) => setProductForm({...productForm, price: e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
+                                        <input type="number" placeholder="Stock" value={productForm.stock} onChange={(e) => setProductForm({...productForm, stock: e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
+                                        <input type="text" placeholder="Category" value={productForm.category} onChange={(e) => setProductForm({...productForm, category: e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Product Image</label>
+                                            <input type="file" accept="image/*" onChange={handleImageSelect} className="w-full px-4 py-2 border rounded-lg" />
+                                            {imagePreview && (
+                                                <div className="mt-4">
+                                                    <img src={imagePreview} alt="Preview" className="w-full h-48 object-cover rounded-lg border" />
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex space-x-2">
+                                            <button onClick={editingProduct ? handleUpdateProduct : handleCreateProduct} className="flex-1 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                                                {editingProduct ? 'Update' : 'Create'} Product
+                                            </button>
+                                            {editingProduct && (
+                                                <button onClick={() => { setEditingProduct(null); setProductForm({ name: '', description: '', price: '', stock: '', category: '' }); setSelectedImage(null); setImagePreview(null); }} className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400">
+                                                    Cancel
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-white/95 backdrop-blur-sm rounded-lg shadow-2xl p-6 border border-white/20">
+                                    <h2 className="text-2xl font-bold mb-6">Product List</h2>
+                                    <div className="space-y-4 max-h-96 overflow-y-auto">
+                                        {products.map(product => (
+                                            <div key={product.id} className="border rounded-lg p-4 flex justify-between items-center">
+                                                <div>
+                                                    <h4 className="font-bold">{product.name}</h4>
+                                                    <p className="text-sm text-gray-600">${product.price} - Stock: {product.stock}</p>
+                                                </div>
+                                                <div className="flex space-x-2">
+                                                    <button onClick={() => startEditProduct(product)} className="p-2 bg-blue-100 text-blue-600 rounded hover:bg-blue-200">
+                                                        <EditIcon />
+                                                    </button>
+                                                    <button onClick={() => handleDeleteProduct(product.id)} className="p-2 bg-red-100 text-red-600 rounded hover:bg-red-200">
+                                                        <TrashIcon />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'orders' && (
+                            <div className="bg-white/95 backdrop-blur-sm rounded-lg shadow-2xl p-6 border border-white/20">
+                                <h2 className="text-2xl font-bold mb-6">My Orders</h2>
+                                {!user ? (
+                                    <p className="text-center text-gray-600">Please login to view your orders</p>
+                                ) : orders.length === 0 ? (
+                                    <p className="text-center text-gray-600">No orders yet</p>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {orders.map(order => (
+                                            <div key={order.id} className="border rounded-lg p-6">
+                                                <div className="flex justify-between items-start mb-4">
+                                                    <div>
+                                                        <p className="text-sm text-gray-500">Order ID: {order.id}</p>
+                                                        <p className="text-sm text-gray-500">{new Date(order.created_at).toLocaleDateString()}</p>
+                                                    </div>
+                                                    <span className={`px-3 py-1 rounded-full text-sm ${order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : order.status === 'confirmed' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
+                                                        {order.status}
+                                                    </span>
+                                                </div>
+                                                <div className="space-y-2 mb-4">
+                                                    {order.items.map((item, idx) => (
+                                                        <div key={idx} className="flex justify-between text-sm">
+                                                            <span>{item.product_name} x {item.quantity}</span>
+                                                            <span className="font-medium">${item.subtotal.toFixed(2)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <div className="border-t pt-2 flex justify-between items-center">
+                                                    <span className="font-bold">Total:</span>
+                                                    <span className="text-xl font-bold text-indigo-600">${order.total_amount.toFixed(2)}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {activeTab === 'cart' && (
+                            <div className="bg-white/95 backdrop-blur-sm rounded-lg shadow-2xl p-6 border border-white/20">
+                                <h2 className="text-2xl font-bold mb-6">Shopping Cart</h2>
+                                {orderMessage && (
+                                    <div className="mb-4 p-4 bg-green-100 text-green-800 rounded-lg flex items-center space-x-2">
+                                        <CheckCircleIcon />
+                                        <span>{orderMessage}</span>
+                                    </div>
+                                )}
+                                {cart.length === 0 ? (
+                                    <p className="text-center text-gray-600">Your cart is empty</p>
+                                ) : (
+                                    <>
+                                        <div className="space-y-4 mb-6">
+                                            {cart.map(item => (
+                                                <div key={item.id} className="flex items-center space-x-4 border-b pb-4">
+                                                    <div className="flex-1">
+                                                        <h4 className="font-bold">{item.name}</h4>
+                                                        <p className="text-sm text-gray-600">${item.price} each</p>
+                                                    </div>
+                                                    <div className="flex items-center space-x-2">
+                                                        <button onClick={() => updateCartQuantity(item.id, item.quantity - 1)} className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">-</button>
+                                                        <span className="px-4">{item.quantity}</span>
+                                                        <button onClick={() => updateCartQuantity(item.id, item.quantity + 1)} className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">+</button>
+                                                    </div>
+                                                    <span className="font-bold w-24 text-right">${(item.price * item.quantity).toFixed(2)}</span>
+                                                    <button onClick={() => removeFromCart(item.id)} className="p-2 bg-red-100 text-red-600 rounded hover:bg-red-200">
+                                                        <TrashIcon />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="border-t pt-4">
+                                            <div className="flex justify-between items-center mb-4">
+                                                <span className="text-xl font-bold">Total:</span>
+                                                <span className="text-2xl font-bold text-indigo-600">${cartTotal.toFixed(2)}</span>
+                                            </div>
+                                            <button onClick={handleCreateOrder} disabled={!user} className={`w-full py-3 rounded-lg font-bold ${user ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>
+                                                {user ? 'Place Order' : 'Login to Place Order'}
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </main>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ShopSphere />);
+    </script>
+</body>
+</html>
