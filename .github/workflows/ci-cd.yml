@@ -79,11 +79,15 @@ jobs:
           type=sha,prefix={{branch}}-
           type=raw,value=latest,enable={{is_default_branch}}
     
+    - name: Prepare api-gateway context
+      if: matrix.service == 'api-gateway'
+      run: |
+        cp -r frontend api-gateway/frontend
+
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
-        context: .
-        file: ./${{ matrix.service }}/Dockerfile
+        context: ./${{ matrix.service }}
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
